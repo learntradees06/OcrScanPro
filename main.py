@@ -86,6 +86,7 @@ class OCRApp:
         self.camera_active = False
         self.excel_file = "extracted_data.xlsx"
         self.training_data_dir = "training_data"
+        self.deep_scan_enabled = tk.BooleanVar(value=False)
         
         # Create training data directory if it doesn't exist
         Path(self.training_data_dir).mkdir(exist_ok=True)
@@ -134,13 +135,18 @@ class OCRApp:
         self.results_text = scrolledtext.ScrolledText(results_frame, height=15, width=80)
         self.results_text.grid(row=0, column=0, sticky="nsew")
         
+        # Deep Scan checkbox
+        deep_scan_cb = ttk.Checkbutton(main_frame, text="Enable Deep Scan (Slower, More Accurate)",
+                                       variable=self.deep_scan_enabled)
+        deep_scan_cb.grid(row=4, column=0, columnspan=3, pady=(10,0), sticky="w")
+
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
+        self.progress.grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
         
         # Status label
         self.status_label = ttk.Label(main_frame, text="Ready")
-        self.status_label.grid(row=5, column=0, columnspan=3, pady=5)
+        self.status_label.grid(row=6, column=0, columnspan=3, pady=5)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -434,6 +440,13 @@ class OCRApp:
         
         # Apply different preprocessing techniques
         processed_images = []
+
+        # If deep scan is disabled, use a simpler, faster preprocessing
+        if not self.deep_scan_enabled.get():
+            processed_images.append(("original", gray))
+            enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
+            processed_images.append(("enhanced", enhanced))
+            return processed_images, image
         
         # Try different rotations (0, 90, 180, 270 degrees)
         rotations = [0, 90, 180, 270]
@@ -466,6 +479,17 @@ class OCRApp:
     def extract_text_ocr(self, processed_images):
         """Extract text using OCR from preprocessed images"""
         all_text = ""
+
+        # If deep scan is disabled, use a single, reliable OCR config
+        if not self.deep_scan_enabled.get():
+            for name, img in processed_images:
+                try:
+                    text = pytesseract.image_to_string(img, config='--psm 6')
+                    if text.strip():
+                        all_text += f"\n--- {name} ---\n{text}\n"
+                except Exception as e:
+                    print(f"OCR error for {name}: {str(e)}")
+            return all_text
         
         for name, img in processed_images:
             try:
@@ -579,6 +603,32 @@ class OCRApp:
                         
         return results
         
+    def lookup_cpn_from_mpn(self, mpn):
+        """Look up CPN from MPN in the lookup file"""
+        lookup_file = "mpn_cpn_lookup.xlsx"
+        if not os.path.exists(lookup_file):
+            return None
+
+        try:
+            df = pd.read_excel(lookup_file)
+            if 'MPN' not in df.columns or 'CPN' not in df.columns:
+                print(f"Warning: {lookup_file} must contain 'MPN' and 'CPN' columns.")
+                return None
+
+            # Ensure MPN column is string type for matching
+            df['MPN'] = df['MPN'].astype(str)
+
+            result = df[df['MPN'] == mpn]
+
+            if not result.empty:
+                cpn = result['CPN'].iloc[0]
+                return str(cpn)
+
+        except Exception as e:
+            print(f"Error reading or looking up in {lookup_file}: {str(e)}")
+
+        return None
+
     def save_to_excel(self, image_file, extracted_data):
         """Save extracted data to Excel file"""
         try:
@@ -722,6 +772,19 @@ class OCRApp:
                 self.root.after(0, lambda: self.update_status("Extracting component data..."))
                 extracted_data = self.extract_specific_data(all_text, barcode_data)
                 
+                # Perform MPN to CPN lookup
+                if extracted_data.get('MPN'):
+                    self.root.after(0, lambda: self.update_status("Looking up CPN from MPN..."))
+                    found_cpns = []
+                    for mpn in extracted_data['MPN']:
+                        cpn = self.lookup_cpn_from_mpn(mpn)
+                        if cpn:
+                            found_cpns.append(cpn)
+
+                    if found_cpns:
+                        # Override any existing CPNs with the looked-up values
+                        extracted_data['CPN'] = found_cpns
+
                 # Save to Excel
                 self.root.after(0, lambda: self.update_status("Saving to Excel..."))
                 success = self.save_to_excel(image_path, extracted_data)
