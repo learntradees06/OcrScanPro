@@ -24,6 +24,7 @@ from pathlib import Path
 import threading
 import platform
 import subprocess
+import sqlite3
 
 # Configure Tesseract path for Windows
 def configure_tesseract_path():
@@ -81,14 +82,13 @@ class OCRApp:
         self.root.geometry("800x600")
         
         # Initialize variables
-        self.image_path = None
-        self.original_pil_image = None
-        self.display_pil_image = None
-        self.auto_rotate_enabled = tk.BooleanVar(value=False)
+        self.current_image = None
+        self.deep_scan_enabled = tk.BooleanVar(value=False)
         self.camera = None
         self.camera_active = False
         self.excel_file = "extracted_data.xlsx"
         self.training_data_dir = "training_data"
+        self.db_file = "cpn_database.db"
         
         # Create training data directory if it doesn't exist
         Path(self.training_data_dir).mkdir(exist_ok=True)
@@ -96,8 +96,8 @@ class OCRApp:
         # Setup GUI
         self.setup_gui()
         
-        # Initialize Excel file
-        self.init_excel_file()
+        # Initialize Database
+        self.init_database()
         
     def setup_gui(self):
         """Setup the main GUI interface"""
@@ -110,103 +110,75 @@ class OCRApp:
                                font=("Arial", 16, "bold"))
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
-        # Main action buttons
-        btn_upload = ttk.Button(main_frame, text="1. Upload Picture",
+        # Three main buttons
+        btn_upload = ttk.Button(main_frame, text="1. Upload Picture\nand Extract Data",
                                command=self.upload_image, width=20)
         btn_upload.grid(row=1, column=0, padx=10, pady=10)
         
-        btn_camera = ttk.Button(main_frame, text="2. Camera Capture",
+        btn_camera = ttk.Button(main_frame, text="2. Camera Capture\nand Extract Data",
                                command=self.camera_capture, width=20)
         btn_camera.grid(row=1, column=1, padx=10, pady=10)
-
-        style = ttk.Style()
-        style.configure("TButton", padding=6, relief="flat", background="#ccc")
-        style.configure("Accent.TButton", font=("Arial", 12, "bold"), foreground="white", background="#007bff")
-
-        self.extract_btn = ttk.Button(main_frame, text="3. Extract Data",
-                                     style="Accent.TButton",
-                                     command=self.extract_data_from_current_image,
-                                     width=20, state="disabled")
-        self.extract_btn.grid(row=1, column=2, padx=10, pady=10)
-
-        auto_rotate_cb = ttk.Checkbutton(main_frame, text="Auto-rotate image (Slower)",
-                                         variable=self.auto_rotate_enabled)
-        auto_rotate_cb.grid(row=2, column=2, pady=5, sticky="w")
         
+        btn_db_manage = ttk.Button(main_frame, text="3. Manage Database",
+                                  command=self.open_db_management_window, width=20)
+        btn_db_manage.grid(row=1, column=2, padx=10, pady=10)
+
+        # Deep Scan checkbox
+        deep_scan_cb = ttk.Checkbutton(main_frame, text="Enable Deep Scan (Slower)",
+                                       variable=self.deep_scan_enabled)
+        deep_scan_cb.grid(row=2, column=0, columnspan=3, pady=(10,0), sticky="w")
+
         # Image display frame
         image_frame = ttk.LabelFrame(main_frame, text="Image Preview", padding="5")
-        image_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky="ew")
+        image_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
         
         self.image_label = ttk.Label(image_frame, text="No image loaded")
-        self.image_label.pack(pady=5)
-
-        # Rotation buttons frame
-        rotation_frame = ttk.Frame(image_frame)
-        rotation_frame.pack(pady=5)
-
-        self.rotate_cw_btn = ttk.Button(rotation_frame, text="Rotate 90° CW", command=self.rotate_image_cw, state="disabled")
-        self.rotate_cw_btn.pack(side=tk.LEFT, padx=5)
-
-        self.rotate_ccw_btn = ttk.Button(rotation_frame, text="Rotate 90° CCW", command=self.rotate_image_ccw, state="disabled")
-        self.rotate_ccw_btn.pack(side=tk.LEFT, padx=5)
-
-        self.reset_btn = ttk.Button(rotation_frame, text="Reset", command=self.reset_image, state="disabled")
-        self.reset_btn.pack(side=tk.LEFT, padx=5)
+        self.image_label.grid(row=0, column=0)
         
         # Results frame
         results_frame = ttk.LabelFrame(main_frame, text="Extraction Results", padding="5")
-        results_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky="nsew")
+        results_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky="nsew")
         
         self.results_text = scrolledtext.ScrolledText(results_frame, height=15, width=80)
         self.results_text.grid(row=0, column=0, sticky="nsew")
         
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
+        self.progress.grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
         
         # Status label
         self.status_label = ttk.Label(main_frame, text="Ready")
-        self.status_label.grid(row=5, column=0, columnspan=3, pady=5)
+        self.status_label.grid(row=6, column=0, columnspan=3, pady=5)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(3, weight=1)
+        main_frame.rowconfigure(4, weight=1)
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(0, weight=1)
-        
-    def init_excel_file(self):
-        """Initialize Excel file with headers if it doesn't exist"""
-        if not os.path.exists(self.excel_file):
-            columns = ['Timestamp', 'Image_File', 'PN', 'Part_Number', 'MPN', 'CPN', 'SSN', 'SN', 'Cisco_Data', 'Barcode_Data']
-            df = pd.DataFrame(columns=columns)
-            df.to_excel(self.excel_file, index=False)
 
-    def rotate_image_cw(self):
-        """Rotate the display image 90 degrees clockwise"""
-        if self.display_pil_image:
-            self.display_pil_image = self.display_pil_image.rotate(-90, expand=True)
-            self.display_pil_image_in_gui(self.display_pil_image)
-
-    def rotate_image_ccw(self):
-        """Rotate the display image 90 degrees counter-clockwise"""
-        if self.display_pil_image:
-            self.display_pil_image = self.display_pil_image.rotate(90, expand=True)
-            self.display_pil_image_in_gui(self.display_pil_image)
-
-    def reset_image(self):
-        """Reset the display image to the original"""
-        if self.original_pil_image:
-            self.display_pil_image = self.original_pil_image.copy()
-            self.display_pil_image_in_gui(self.display_pil_image)
-
-    def update_rotation_buttons_state(self, state):
-        """Enable or disable the rotation buttons"""
-        self.rotate_cw_btn.config(state=state)
-        self.rotate_ccw_btn.config(state=state)
-        self.reset_btn.config(state=state)
+    def init_database(self):
+        """Initialize the SQLite database and create the table if it doesn't exist."""
+        if not os.path.exists(self.db_file):
+            try:
+                conn = sqlite3.connect(self.db_file)
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE mpn_cpn_map (
+                        mpn TEXT PRIMARY KEY,
+                        cpn TEXT NOT NULL
+                    )
+                ''')
+                conn.commit()
+                conn.close()
+                print(f"Database '{self.db_file}' created successfully.")
+            except Exception as e:
+                print(f"Error creating database: {str(e)}")
             
+    def open_db_management_window(self):
+        DBManagementWindow(self.root, self.db_file)
+
     def upload_image(self):
         """Handle image upload and processing"""
         file_path = filedialog.askopenfilename(
@@ -215,12 +187,7 @@ class OCRApp:
         )
         
         if file_path:
-            self.image_path = file_path
-            self.original_pil_image = Image.open(file_path)
-            self.display_pil_image = self.original_pil_image.copy()
-            self.display_pil_image_in_gui(self.display_pil_image)
-            self.update_rotation_buttons_state("normal")
-            self.extract_btn.config(state="normal")
+            self.process_image(file_path)
             
     def camera_capture(self):
         """Handle camera capture"""
@@ -293,15 +260,8 @@ class OCRApp:
                 cv2.imwrite(filename, frame)
                 
                 self.stop_camera()
+                self.process_image(filename)
                 
-                # Load the captured image and enable extraction
-                self.image_path = filename
-                self.original_pil_image = Image.open(filename)
-                self.display_pil_image = self.original_pil_image.copy()
-                self.display_pil_image_in_gui(self.display_pil_image)
-                self.update_rotation_buttons_state("normal")
-                self.extract_btn.config(state="normal")
-
     def stop_camera(self):
         """Stop camera capture"""
         self.camera_active = False
@@ -484,44 +444,31 @@ class OCRApp:
         
         window.destroy()
                       
-    def preprocess_image(self, pil_image):
-        """Preprocess a PIL image for better OCR results with advanced techniques."""
-        # Convert PIL image to OpenCV format
-        image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+    def preprocess_image(self, image_path):
+        """Preprocess image for better OCR results with rotation correction"""
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError("Could not load image")
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
         processed_images = []
 
-        # If auto-rotate is enabled, try all rotations
-        if self.auto_rotate_enabled.get():
+        if self.deep_scan_enabled.get():
             rotations = [0, 90, 180, 270]
             for angle in rotations:
-                if angle == 0:
-                    rotated_gray = gray
-                elif angle == 90:
-                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
-                elif angle == 180:
-                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_180)
-                elif angle == 270:
-                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                if angle == 0: rotated_gray = gray
+                elif angle == 90: rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+                elif angle == 180: rotated_gray = cv2.rotate(gray, cv2.ROTATE_180)
+                else: rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-                # Add the rotated grayscale image itself
                 processed_images.append((f"rot_{angle}", rotated_gray))
-                # Add an enhanced version
                 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
                 enhanced = clahe.apply(rotated_gray)
                 processed_images.append((f"rot_{angle}_enhanced", enhanced))
         else:
-            # If not auto-rotating, just use the advanced pipeline on the current orientation
             processed_images.append(("original", gray))
-            denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-            adaptive_thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-            processed_images.append(("adaptive_thresh", adaptive_thresh))
-            _, otsu_thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            processed_images.append(("otsu_thresh", otsu_thresh))
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            clahe_img = clahe.apply(gray)
-            processed_images.append(("clahe", clahe_img))
+            enhanced = clahe.apply(gray)
+            processed_images.append(("enhanced", enhanced))
 
         return processed_images, image
         
@@ -582,14 +529,14 @@ class OCRApp:
             'Barcode_Data': barcode_data
         }
         
-        # Patterns for different fields - made more flexible for OCR variations
+        # Patterns for different fields
         patterns = {
-            'PN': [r'P/N\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'PN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Part\s*No\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
-            'Part_Number': [r'Part\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Customer\s*Part\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
-            'MPN': [r'MPN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'MODEL\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
-            'CPN': [r'CPN\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
-            'SSN': [r'SSN\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
-            'SN': [r'S/N\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'SN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Serial\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Serial\s*[:\s]\s*([A-Z0-9\-\.\/]+)']
+            'PN': [r'PN[:\s]+([A-Z0-9\-\.]+)', r'P/N[:\s]+([A-Z0-9\-\.]+)', r'Part\s*No[:\s]+([A-Z0-9\-\.]+)'],
+            'Part_Number': [r'PART\s*NUMBER[:\s]+([A-Z0-9\-\.]+)', r'Part\s*Number[:\s]+([A-Z0-9\-\.]+)'],
+            'MPN': [r'MPN[:\s]+([A-Z0-9\-\.]+)', r'Mfg\s*Part[:\s]+([A-Z0-9\-\.]+)'],
+            'CPN': [r'CPN[:\s]+([A-Z0-9\-\.]+)', r'Customer\s*Part[:\s]+([A-Z0-9\-\.]+)'],
+            'SSN': [r'SSN[:\s]+([A-Z0-9\-\.]+)'],
+            'SN': [r'SN[:\s]+([A-Z0-9\-\.]+)', r'Serial[:\s]+([A-Z0-9\-\.]+)', r'S/N[:\s]+([A-Z0-9\-\.]+)']
         }
         
         # Extract data using patterns
@@ -640,30 +587,24 @@ class OCRApp:
                         results['Cisco_Data'].append(cisco_context)
                         
         return results
-        
+
     def lookup_cpn_from_mpn(self, mpn):
-        """Look up CPN from MPN in the lookup file"""
-        lookup_file = "mpn_cpn_lookup.xlsx"
-        if not os.path.exists(lookup_file):
+        """Look up CPN from MPN in the SQLite database."""
+        if not os.path.exists(self.db_file):
             return None
 
         try:
-            df = pd.read_excel(lookup_file)
-            if 'MPN' not in df.columns or 'CPN' not in df.columns:
-                print(f"Warning: {lookup_file} must contain 'MPN' and 'CPN' columns.")
-                return None
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT cpn FROM mpn_cpn_map WHERE mpn = ?", (mpn,))
+            result = cursor.fetchone()
+            conn.close()
 
-            # Ensure MPN column is string type for matching
-            df['MPN'] = df['MPN'].astype(str)
-
-            result = df[df['MPN'] == mpn]
-
-            if not result.empty:
-                cpn = result['CPN'].iloc[0]
-                return str(cpn)
+            if result:
+                return result[0]
 
         except Exception as e:
-            print(f"Error reading or looking up in {lookup_file}: {str(e)}")
+            print(f"Error looking up CPN in database: {str(e)}")
 
         return None
 
@@ -706,13 +647,15 @@ class OCRApp:
             messagebox.showerror("Error", f"Failed to save to Excel: {str(e)}")
             return False
             
-    def display_pil_image_in_gui(self, pil_image):
-        """Display a PIL image object in the GUI"""
+    def display_image(self, image_path):
+        """Display image in the GUI"""
         try:
+            # Load and resize image for display
+            image = Image.open(image_path)
+
             # Calculate size to fit in display area
             display_width = 500
             display_height = 300
-            image = pil_image.copy()
             image.thumbnail((display_width, display_height), Image.Resampling.LANCZOS)
             
             # Convert to PhotoImage
@@ -781,21 +724,20 @@ class OCRApp:
         self.status_label.configure(text=message)
         self.root.update()
         
-    def extract_data_from_current_image(self):
-        """Main image processing function, triggered by the 'Extract Data' button."""
-        if not self.display_pil_image:
-            messagebox.showwarning("No Image", "Please upload an image first.")
-            return
-
+    def process_image(self, image_path):
+        """Main image processing function"""
         def process():
             try:
                 # All heavy processing in background thread
                 self.root.after(0, lambda: self.progress.start())
                 self.root.after(0, lambda: self.update_status("Processing image..."))
                 
+                # Display image
+                self.root.after(0, lambda: self.display_image(image_path))
+
                 # Preprocess image
                 self.root.after(0, lambda: self.update_status("Preprocessing image..."))
-                processed_images, original_image = self.preprocess_image(self.display_pil_image)
+                processed_images, original_image = self.preprocess_image(image_path)
                 
                 # Extract text using OCR
                 self.root.after(0, lambda: self.update_status("Extracting text..."))
@@ -824,7 +766,7 @@ class OCRApp:
 
                 # Save to Excel
                 self.root.after(0, lambda: self.update_status("Saving to Excel..."))
-                success = self.save_to_excel(self.image_path, extracted_data)
+                success = self.save_to_excel(image_path, extracted_data)
                 
                 # Update UI in main thread
                 def update_ui():
@@ -849,6 +791,155 @@ class OCRApp:
         thread = threading.Thread(target=process)
         thread.daemon = True
         thread.start()
+
+# --- DB Management Window ---
+class DBManagementWindow(tk.Toplevel):
+    def __init__(self, parent, db_file):
+        super().__init__(parent)
+        self.db_file = db_file
+        self.title("Database Management")
+        self.geometry("600x400")
+
+        self.create_widgets()
+        self.load_data()
+
+    def create_widgets(self):
+        # Frame for the Treeview
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+        # Treeview to display data
+        self.tree = ttk.Treeview(tree_frame, columns=("mpn", "cpn"), show="headings")
+        self.tree.heading("mpn", text="MPN")
+        self.tree.heading("cpn", text="CPN")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        # Scrollbar for the Treeview
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+        # Frame for entry fields and buttons
+        entry_frame = ttk.LabelFrame(self, text="Manage Record")
+        entry_frame.pack(pady=10, padx=10, fill="x")
+
+        # Entry fields
+        ttk.Label(entry_frame, text="MPN:").grid(row=0, column=0, padx=5, pady=5)
+        self.mpn_entry = ttk.Entry(entry_frame, width=30)
+        self.mpn_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        ttk.Label(entry_frame, text="CPN:").grid(row=1, column=0, padx=5, pady=5)
+        self.cpn_entry = ttk.Entry(entry_frame, width=30)
+        self.cpn_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        # Buttons
+        btn_frame = ttk.Frame(self)
+        btn_frame.pack(pady=10)
+
+        add_btn = ttk.Button(btn_frame, text="Add", command=self.add_record)
+        add_btn.pack(side="left", padx=5)
+
+        update_btn = ttk.Button(btn_frame, text="Update", command=self.update_record)
+        update_btn.pack(side="left", padx=5)
+
+        delete_btn = ttk.Button(btn_frame, text="Delete", command=self.delete_record)
+        delete_btn.pack(side="left", padx=5)
+
+        clear_btn = ttk.Button(btn_frame, text="Clear Fields", command=self.clear_fields)
+        clear_btn.pack(side="left", padx=5)
+
+        # Bind tree selection to a method
+        self.tree.bind("<<TreeviewSelect>>", self.on_select)
+
+    def load_data(self):
+        # Clear existing data
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        # Load new data
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM mpn_cpn_map ORDER BY mpn")
+            for row in cursor.fetchall():
+                self.tree.insert("", "end", values=row)
+            conn.close()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load data from database: {e}")
+
+    def add_record(self):
+        mpn = self.mpn_entry.get().strip()
+        cpn = self.cpn_entry.get().strip()
+        if not mpn or not cpn:
+            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.")
+            return
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO mpn_cpn_map (mpn, cpn) VALUES (?, ?)", (mpn, cpn))
+            conn.commit()
+            conn.close()
+            self.load_data()
+            self.clear_fields()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Error", f"MPN '{mpn}' already exists.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add record: {e}")
+
+    def update_record(self):
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Selection Error", "Please select a record to update.")
+            return
+
+        original_mpn = self.tree.item(selected_item, "values")[0]
+        mpn = self.mpn_entry.get().strip()
+        cpn = self.cpn_entry.get().strip()
+
+        if not mpn or not cpn:
+            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.")
+            return
+
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE mpn_cpn_map SET mpn = ?, cpn = ? WHERE mpn = ?", (mpn, cpn, original_mpn))
+            conn.commit()
+            conn.close()
+            self.load_data()
+            self.clear_fields()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update record: {e}")
+
+    def delete_record(self):
+        selected_item = self.tree.selection()
+        if not selected_item:
+            messagebox.showwarning("Selection Error", "Please select a record to delete.")
+            return
+
+        mpn = self.tree.item(selected_item, "values")[0]
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete MPN '{mpn}'?"):
+            try:
+                conn = sqlite3.connect(self.db_file)
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM mpn_cpn_map WHERE mpn = ?", (mpn,))
+                conn.commit()
+                conn.close()
+                self.load_data()
+                self.clear_fields()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete record: {e}")
+
+    def on_select(self, event):
+        selected_item = self.tree.selection()
+        if selected_item:
+            mpn, cpn = self.tree.item(selected_item, "values")
+            self.clear_fields()
+            self.mpn_entry.insert(0, mpn)
+            self.cpn_entry.insert(0, cpn)
+
+    def clear_fields(self):
+        self.mpn_entry.delete(0, tk.END)
+        self.cpn_entry.delete(0, tk.END)
 
 def main():
     """Main application entry point"""
