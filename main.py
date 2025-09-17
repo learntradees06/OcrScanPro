@@ -81,12 +81,14 @@ class OCRApp:
         self.root.geometry("800x600")
         
         # Initialize variables
-        self.current_image = None
+        self.image_path = None
+        self.original_pil_image = None
+        self.display_pil_image = None
+        self.auto_rotate_enabled = tk.BooleanVar(value=False)
         self.camera = None
         self.camera_active = False
         self.excel_file = "extracted_data.xlsx"
         self.training_data_dir = "training_data"
-        self.deep_scan_enabled = tk.BooleanVar(value=False)
         
         # Create training data directory if it doesn't exist
         Path(self.training_data_dir).mkdir(exist_ok=True)
@@ -108,25 +110,48 @@ class OCRApp:
                                font=("Arial", 16, "bold"))
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
-        # Three main buttons
-        btn_upload = ttk.Button(main_frame, text="1. Upload Picture\nand Extract Data", 
+        # Main action buttons
+        btn_upload = ttk.Button(main_frame, text="1. Upload Picture",
                                command=self.upload_image, width=20)
         btn_upload.grid(row=1, column=0, padx=10, pady=10)
         
-        btn_camera = ttk.Button(main_frame, text="2. Camera Capture\nand Extract Data", 
+        btn_camera = ttk.Button(main_frame, text="2. Camera Capture",
                                command=self.camera_capture, width=20)
         btn_camera.grid(row=1, column=1, padx=10, pady=10)
-        
-        btn_train = ttk.Button(main_frame, text="3. Upload Training\nImages", 
-                              command=self.train_model, width=20)
-        btn_train.grid(row=1, column=2, padx=10, pady=10)
+
+        style = ttk.Style()
+        style.configure("TButton", padding=6, relief="flat", background="#ccc")
+        style.configure("Accent.TButton", font=("Arial", 12, "bold"), foreground="white", background="#007bff")
+
+        self.extract_btn = ttk.Button(main_frame, text="3. Extract Data",
+                                     style="Accent.TButton",
+                                     command=self.extract_data_from_current_image,
+                                     width=20, state="disabled")
+        self.extract_btn.grid(row=1, column=2, padx=10, pady=10)
+
+        auto_rotate_cb = ttk.Checkbutton(main_frame, text="Auto-rotate image (Slower)",
+                                         variable=self.auto_rotate_enabled)
+        auto_rotate_cb.grid(row=2, column=2, pady=5, sticky="w")
         
         # Image display frame
         image_frame = ttk.LabelFrame(main_frame, text="Image Preview", padding="5")
         image_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky="ew")
         
         self.image_label = ttk.Label(image_frame, text="No image loaded")
-        self.image_label.grid(row=0, column=0)
+        self.image_label.pack(pady=5)
+
+        # Rotation buttons frame
+        rotation_frame = ttk.Frame(image_frame)
+        rotation_frame.pack(pady=5)
+
+        self.rotate_cw_btn = ttk.Button(rotation_frame, text="Rotate 90° CW", command=self.rotate_image_cw, state="disabled")
+        self.rotate_cw_btn.pack(side=tk.LEFT, padx=5)
+
+        self.rotate_ccw_btn = ttk.Button(rotation_frame, text="Rotate 90° CCW", command=self.rotate_image_ccw, state="disabled")
+        self.rotate_ccw_btn.pack(side=tk.LEFT, padx=5)
+
+        self.reset_btn = ttk.Button(rotation_frame, text="Reset", command=self.reset_image, state="disabled")
+        self.reset_btn.pack(side=tk.LEFT, padx=5)
         
         # Results frame
         results_frame = ttk.LabelFrame(main_frame, text="Extraction Results", padding="5")
@@ -135,18 +160,13 @@ class OCRApp:
         self.results_text = scrolledtext.ScrolledText(results_frame, height=15, width=80)
         self.results_text.grid(row=0, column=0, sticky="nsew")
         
-        # Deep Scan checkbox
-        deep_scan_cb = ttk.Checkbutton(main_frame, text="Enable Deep Scan (Slower, More Accurate)",
-                                       variable=self.deep_scan_enabled)
-        deep_scan_cb.grid(row=4, column=0, columnspan=3, pady=(10,0), sticky="w")
-
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
+        self.progress.grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
         
         # Status label
         self.status_label = ttk.Label(main_frame, text="Ready")
-        self.status_label.grid(row=6, column=0, columnspan=3, pady=5)
+        self.status_label.grid(row=5, column=0, columnspan=3, pady=5)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -162,6 +182,30 @@ class OCRApp:
             columns = ['Timestamp', 'Image_File', 'PN', 'Part_Number', 'MPN', 'CPN', 'SSN', 'SN', 'Cisco_Data', 'Barcode_Data']
             df = pd.DataFrame(columns=columns)
             df.to_excel(self.excel_file, index=False)
+
+    def rotate_image_cw(self):
+        """Rotate the display image 90 degrees clockwise"""
+        if self.display_pil_image:
+            self.display_pil_image = self.display_pil_image.rotate(-90, expand=True)
+            self.display_pil_image_in_gui(self.display_pil_image)
+
+    def rotate_image_ccw(self):
+        """Rotate the display image 90 degrees counter-clockwise"""
+        if self.display_pil_image:
+            self.display_pil_image = self.display_pil_image.rotate(90, expand=True)
+            self.display_pil_image_in_gui(self.display_pil_image)
+
+    def reset_image(self):
+        """Reset the display image to the original"""
+        if self.original_pil_image:
+            self.display_pil_image = self.original_pil_image.copy()
+            self.display_pil_image_in_gui(self.display_pil_image)
+
+    def update_rotation_buttons_state(self, state):
+        """Enable or disable the rotation buttons"""
+        self.rotate_cw_btn.config(state=state)
+        self.rotate_ccw_btn.config(state=state)
+        self.reset_btn.config(state=state)
             
     def upload_image(self):
         """Handle image upload and processing"""
@@ -171,7 +215,12 @@ class OCRApp:
         )
         
         if file_path:
-            self.process_image(file_path)
+            self.image_path = file_path
+            self.original_pil_image = Image.open(file_path)
+            self.display_pil_image = self.original_pil_image.copy()
+            self.display_pil_image_in_gui(self.display_pil_image)
+            self.update_rotation_buttons_state("normal")
+            self.extract_btn.config(state="normal")
             
     def camera_capture(self):
         """Handle camera capture"""
@@ -244,8 +293,15 @@ class OCRApp:
                 cv2.imwrite(filename, frame)
                 
                 self.stop_camera()
-                self.process_image(filename)
                 
+                # Load the captured image and enable extraction
+                self.image_path = filename
+                self.original_pil_image = Image.open(filename)
+                self.display_pil_image = self.original_pil_image.copy()
+                self.display_pil_image_in_gui(self.display_pil_image)
+                self.update_rotation_buttons_state("normal")
+                self.extract_btn.config(state="normal")
+
     def stop_camera(self):
         """Stop camera capture"""
         self.camera_active = False
@@ -428,69 +484,51 @@ class OCRApp:
         
         window.destroy()
                       
-    def preprocess_image(self, image_path):
-        """Preprocess image for better OCR results with rotation correction"""
-        # Read image
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError("Could not load image")
-            
-        # Convert to grayscale
+    def preprocess_image(self, pil_image):
+        """Preprocess a PIL image for better OCR results with advanced techniques."""
+        # Convert PIL image to OpenCV format
+        image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Apply different preprocessing techniques
         processed_images = []
 
-        # If deep scan is disabled, use a simpler, faster preprocessing
-        if not self.deep_scan_enabled.get():
+        # If auto-rotate is enabled, try all rotations
+        if self.auto_rotate_enabled.get():
+            rotations = [0, 90, 180, 270]
+            for angle in rotations:
+                if angle == 0:
+                    rotated_gray = gray
+                elif angle == 90:
+                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
+                elif angle == 180:
+                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_180)
+                elif angle == 270:
+                    rotated_gray = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+                # Add the rotated grayscale image itself
+                processed_images.append((f"rot_{angle}", rotated_gray))
+                # Add an enhanced version
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                enhanced = clahe.apply(rotated_gray)
+                processed_images.append((f"rot_{angle}_enhanced", enhanced))
+        else:
+            # If not auto-rotating, just use the advanced pipeline on the current orientation
             processed_images.append(("original", gray))
-            enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-            processed_images.append(("enhanced", enhanced))
-            return processed_images, image
-        
-        # Try different rotations (0, 90, 180, 270 degrees)
-        rotations = [0, 90, 180, 270]
-        
-        for angle in rotations:
-            # Rotate image
-            if angle == 0:
-                rotated = gray
-            elif angle == 90:
-                rotated = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
-            elif angle == 180:
-                rotated = cv2.rotate(gray, cv2.ROTATE_180)
-            elif angle == 270:
-                rotated = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            
-            # Original grayscale
-            processed_images.append((f"rot_{angle}_original", rotated))
-            
-            # Enhanced contrast
-            enhanced = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(rotated)
-            processed_images.append((f"rot_{angle}_enhanced", enhanced))
-            
-            # Gaussian blur + threshold
-            blurred = cv2.GaussianBlur(rotated, (5, 5), 0)
-            thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-            processed_images.append((f"rot_{angle}_threshold", thresh))
-        
+            denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+            adaptive_thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+            processed_images.append(("adaptive_thresh", adaptive_thresh))
+            _, otsu_thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            processed_images.append(("otsu_thresh", otsu_thresh))
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            clahe_img = clahe.apply(gray)
+            processed_images.append(("clahe", clahe_img))
+
         return processed_images, image
         
     def extract_text_ocr(self, processed_images):
         """Extract text using OCR from preprocessed images"""
         all_text = ""
 
-        # If deep scan is disabled, use a single, reliable OCR config
-        if not self.deep_scan_enabled.get():
-            for name, img in processed_images:
-                try:
-                    text = pytesseract.image_to_string(img, config='--psm 6')
-                    if text.strip():
-                        all_text += f"\n--- {name} ---\n{text}\n"
-                except Exception as e:
-                    print(f"OCR error for {name}: {str(e)}")
-            return all_text
-        
         for name, img in processed_images:
             try:
                 # Try different OCR configurations
@@ -544,14 +582,14 @@ class OCRApp:
             'Barcode_Data': barcode_data
         }
         
-        # Patterns for different fields
+        # Patterns for different fields - made more flexible for OCR variations
         patterns = {
-            'PN': [r'PN[:\s]+([A-Z0-9\-\.]+)', r'P/N[:\s]+([A-Z0-9\-\.]+)', r'Part\s*No[:\s]+([A-Z0-9\-\.]+)'],
-            'Part_Number': [r'PART\s*NUMBER[:\s]+([A-Z0-9\-\.]+)', r'Part\s*Number[:\s]+([A-Z0-9\-\.]+)'],
-            'MPN': [r'MPN[:\s]+([A-Z0-9\-\.]+)', r'Mfg\s*Part[:\s]+([A-Z0-9\-\.]+)'],
-            'CPN': [r'CPN[:\s]+([A-Z0-9\-\.]+)', r'Customer\s*Part[:\s]+([A-Z0-9\-\.]+)'],
-            'SSN': [r'SSN[:\s]+([A-Z0-9\-\.]+)'],
-            'SN': [r'SN[:\s]+([A-Z0-9\-\.]+)', r'Serial[:\s]+([A-Z0-9\-\.]+)', r'S/N[:\s]+([A-Z0-9\-\.]+)']
+            'PN': [r'P/N\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'PN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Part\s*No\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
+            'Part_Number': [r'Part\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Customer\s*Part\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
+            'MPN': [r'MPN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'MODEL\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
+            'CPN': [r'CPN\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
+            'SSN': [r'SSN\s*[:\s]\s*([A-Z0-9\-\.\/]+)'],
+            'SN': [r'S/N\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'SN\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Serial\s*Number\s*[:\s]\s*([A-Z0-9\-\.\/]+)', r'Serial\s*[:\s]\s*([A-Z0-9\-\.\/]+)']
         }
         
         # Extract data using patterns
@@ -668,15 +706,13 @@ class OCRApp:
             messagebox.showerror("Error", f"Failed to save to Excel: {str(e)}")
             return False
             
-    def display_image(self, image_path):
-        """Display image in the GUI"""
+    def display_pil_image_in_gui(self, pil_image):
+        """Display a PIL image object in the GUI"""
         try:
-            # Load and resize image for display
-            image = Image.open(image_path)
-            
             # Calculate size to fit in display area
             display_width = 500
             display_height = 300
+            image = pil_image.copy()
             image.thumbnail((display_width, display_height), Image.Resampling.LANCZOS)
             
             # Convert to PhotoImage
@@ -745,20 +781,21 @@ class OCRApp:
         self.status_label.configure(text=message)
         self.root.update()
         
-    def process_image(self, image_path):
-        """Main image processing function"""
+    def extract_data_from_current_image(self):
+        """Main image processing function, triggered by the 'Extract Data' button."""
+        if not self.display_pil_image:
+            messagebox.showwarning("No Image", "Please upload an image first.")
+            return
+
         def process():
             try:
                 # All heavy processing in background thread
                 self.root.after(0, lambda: self.progress.start())
                 self.root.after(0, lambda: self.update_status("Processing image..."))
                 
-                # Display image
-                self.root.after(0, lambda: self.display_image(image_path))
-                
                 # Preprocess image
                 self.root.after(0, lambda: self.update_status("Preprocessing image..."))
-                processed_images, original_image = self.preprocess_image(image_path)
+                processed_images, original_image = self.preprocess_image(self.display_pil_image)
                 
                 # Extract text using OCR
                 self.root.after(0, lambda: self.update_status("Extracting text..."))
@@ -787,7 +824,7 @@ class OCRApp:
 
                 # Save to Excel
                 self.root.after(0, lambda: self.update_status("Saving to Excel..."))
-                success = self.save_to_excel(image_path, extracted_data)
+                success = self.save_to_excel(self.image_path, extracted_data)
                 
                 # Update UI in main thread
                 def update_ui():
