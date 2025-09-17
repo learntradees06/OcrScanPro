@@ -1,0 +1,30 @@
+WINDOWS SETUP INSTRUCTIONS FOR OCR APP
+==========================================
+
+PROBLEM: Tesseract path error on Windows
+SOLUTION: The app now auto-detects Tesseract installation
+
+YOUR TESSERACT PATH: C:\Users\tx901465\AppData\Local\Programs\Tesseract-OCR
+
+QUICK FIX:
+1. Make sure tesseract.exe exists at: C:\Users\tx901465\AppData\Local\Programs\Tesseract-OCR\tesseract.exe
+
+2. If file doesn't exist, download Tesseract from:
+   https://github.com/UB-Mannheim/tesseract/wiki
+
+3. Install Python requirements:
+   pip install -r requirements.txt
+
+4. Run the app:
+   python main.py
+
+MANUAL FIX (if auto-detection fails):
+If you still get path errors, add this line at the top of main.py after the imports:
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\tx901465\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+
+VERIFY INSTALLATION:
+Open Command Prompt and run:
+C:\Users\tx901465\AppData\Local\Programs\Tesseract-OCR\tesseract.exe --version
+
+If this works, the OCR app should work too!
