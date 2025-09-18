@@ -798,14 +798,28 @@ class DBManagementWindow(tk.Toplevel):
         super().__init__(parent)
         self.db_file = db_file
         self.title("Database Management")
-        self.geometry("600x400")
+        self.geometry("800x600")
 
         self.create_widgets()
         self.load_data()
 
     def create_widgets(self):
+        # Main frame
+        main_frame = ttk.Frame(self, padding="10")
+        main_frame.pack(fill="both", expand=True)
+
+        # Top frame for import/export buttons
+        io_frame = ttk.Frame(main_frame)
+        io_frame.pack(fill="x", pady=5)
+
+        import_btn = ttk.Button(io_frame, text="Import from Excel", command=self.import_from_excel)
+        import_btn.pack(side="left", padx=5)
+
+        export_btn = ttk.Button(io_frame, text="Export to Excel", command=self.export_to_excel)
+        export_btn.pack(side="left", padx=5)
+
         # Frame for the Treeview
-        tree_frame = ttk.Frame(self)
+        tree_frame = ttk.Frame(main_frame)
         tree_frame.pack(pady=10, padx=10, fill="both", expand=True)
 
         # Treeview to display data
@@ -820,33 +834,33 @@ class DBManagementWindow(tk.Toplevel):
         self.tree.configure(yscrollcommand=scrollbar.set)
 
         # Frame for entry fields and buttons
-        entry_frame = ttk.LabelFrame(self, text="Manage Record")
+        entry_frame = ttk.LabelFrame(main_frame, text="Manage Record")
         entry_frame.pack(pady=10, padx=10, fill="x")
 
         # Entry fields
-        ttk.Label(entry_frame, text="MPN:").grid(row=0, column=0, padx=5, pady=5)
-        self.mpn_entry = ttk.Entry(entry_frame, width=30)
+        ttk.Label(entry_frame, text="MPN:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.mpn_entry = ttk.Entry(entry_frame, width=40)
         self.mpn_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        ttk.Label(entry_frame, text="CPN:").grid(row=1, column=0, padx=5, pady=5)
-        self.cpn_entry = ttk.Entry(entry_frame, width=30)
+        ttk.Label(entry_frame, text="CPN:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.cpn_entry = ttk.Entry(entry_frame, width=40)
         self.cpn_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        # Buttons
-        btn_frame = ttk.Frame(self)
-        btn_frame.pack(pady=10)
+        # Buttons for CRUD operations
+        crud_frame = ttk.Frame(entry_frame)
+        crud_frame.grid(row=0, column=2, rowspan=2, padx=20)
 
-        add_btn = ttk.Button(btn_frame, text="Add", command=self.add_record)
-        add_btn.pack(side="left", padx=5)
+        add_btn = ttk.Button(crud_frame, text="Add", command=self.add_record)
+        add_btn.pack(pady=2, fill="x")
 
-        update_btn = ttk.Button(btn_frame, text="Update", command=self.update_record)
-        update_btn.pack(side="left", padx=5)
+        update_btn = ttk.Button(crud_frame, text="Update", command=self.update_record)
+        update_btn.pack(pady=2, fill="x")
 
-        delete_btn = ttk.Button(btn_frame, text="Delete", command=self.delete_record)
-        delete_btn.pack(side="left", padx=5)
+        delete_btn = ttk.Button(crud_frame, text="Delete", command=self.delete_record)
+        delete_btn.pack(pady=2, fill="x")
 
-        clear_btn = ttk.Button(btn_frame, text="Clear Fields", command=self.clear_fields)
-        clear_btn.pack(side="left", padx=5)
+        clear_btn = ttk.Button(crud_frame, text="Clear Fields", command=self.clear_fields)
+        clear_btn.pack(pady=2, fill="x")
 
         # Bind tree selection to a method
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
@@ -864,13 +878,13 @@ class DBManagementWindow(tk.Toplevel):
                 self.tree.insert("", "end", values=row)
             conn.close()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load data from database: {e}")
+            messagebox.showerror("Error", f"Failed to load data from database: {e}", parent=self)
 
     def add_record(self):
         mpn = self.mpn_entry.get().strip()
         cpn = self.cpn_entry.get().strip()
         if not mpn or not cpn:
-            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.")
+            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.", parent=self)
             return
         try:
             conn = sqlite3.connect(self.db_file)
@@ -881,14 +895,14 @@ class DBManagementWindow(tk.Toplevel):
             self.load_data()
             self.clear_fields()
         except sqlite3.IntegrityError:
-            messagebox.showerror("Error", f"MPN '{mpn}' already exists.")
+            messagebox.showerror("Error", f"MPN '{mpn}' already exists.", parent=self)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to add record: {e}")
+            messagebox.showerror("Error", f"Failed to add record: {e}", parent=self)
 
     def update_record(self):
         selected_item = self.tree.selection()
         if not selected_item:
-            messagebox.showwarning("Selection Error", "Please select a record to update.")
+            messagebox.showwarning("Selection Error", "Please select a record to update.", parent=self)
             return
 
         original_mpn = self.tree.item(selected_item, "values")[0]
@@ -896,7 +910,7 @@ class DBManagementWindow(tk.Toplevel):
         cpn = self.cpn_entry.get().strip()
 
         if not mpn or not cpn:
-            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.")
+            messagebox.showwarning("Input Error", "MPN and CPN fields cannot be empty.", parent=self)
             return
 
         try:
@@ -908,16 +922,16 @@ class DBManagementWindow(tk.Toplevel):
             self.load_data()
             self.clear_fields()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to update record: {e}")
+            messagebox.showerror("Error", f"Failed to update record: {e}", parent=self)
 
     def delete_record(self):
         selected_item = self.tree.selection()
         if not selected_item:
-            messagebox.showwarning("Selection Error", "Please select a record to delete.")
+            messagebox.showwarning("Selection Error", "Please select a record to delete.", parent=self)
             return
 
         mpn = self.tree.item(selected_item, "values")[0]
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete MPN '{mpn}'?"):
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete MPN '{mpn}'?", parent=self):
             try:
                 conn = sqlite3.connect(self.db_file)
                 cursor = conn.cursor()
@@ -927,7 +941,7 @@ class DBManagementWindow(tk.Toplevel):
                 self.load_data()
                 self.clear_fields()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to delete record: {e}")
+                messagebox.showerror("Error", f"Failed to delete record: {e}", parent=self)
 
     def on_select(self, event):
         selected_item = self.tree.selection()
@@ -940,6 +954,73 @@ class DBManagementWindow(tk.Toplevel):
     def clear_fields(self):
         self.mpn_entry.delete(0, tk.END)
         self.cpn_entry.delete(0, tk.END)
+
+    def export_to_excel(self):
+        """Export the database contents to an Excel file."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="Export Database to Excel"
+        )
+
+        if not file_path:
+            return # User cancelled
+
+        try:
+            conn = sqlite3.connect(self.db_file)
+            df = pd.read_sql_query("SELECT * FROM mpn_cpn_map", conn)
+            conn.close()
+
+            df.to_excel(file_path, index=False)
+            messagebox.showinfo("Export Successful", f"Database successfully exported to\n{file_path}", parent=self)
+
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export database: {e}", parent=self)
+
+    def import_from_excel(self):
+        """Import records from an Excel file into the database."""
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="Import from Excel"
+        )
+
+        if not file_path:
+            return # User cancelled
+
+        try:
+            df = pd.read_excel(file_path)
+            if 'mpn' not in df.columns or 'cpn' not in df.columns:
+                messagebox.showerror("Import Error", "Excel file must contain 'mpn' and 'cpn' columns.", parent=self)
+                return
+
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+
+            imported_count = 0
+            skipped_count = 0
+
+            for index, row in df.iterrows():
+                mpn = str(row['mpn'])
+                cpn = str(row['cpn'])
+                try:
+                    cursor.execute("INSERT INTO mpn_cpn_map (mpn, cpn) VALUES (?, ?)", (mpn, cpn))
+                    imported_count += 1
+                except sqlite3.IntegrityError:
+                    # This MPN already exists, so we skip it
+                    skipped_count += 1
+
+            conn.commit()
+            conn.close()
+
+            self.load_data() # Refresh the view
+
+            summary_message = f"Import Complete!\n\n"
+            summary_message += f"Successfully imported: {imported_count} records.\n"
+            summary_message += f"Skipped (already exist): {skipped_count} records."
+            messagebox.showinfo("Import Summary", summary_message, parent=self)
+
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import from Excel file: {e}", parent=self)
 
 def main():
     """Main application entry point"""
