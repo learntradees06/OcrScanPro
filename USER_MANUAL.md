@@ -1,97 +1,80 @@
-# OcrScanPro User Manual
+# Hardware Component OCR Data Extractor - User Manual
 
-## 1. Overview
+## 1. Introduction
 
-OcrScanPro is a desktop application designed to help you extract key information from images of hardware components. Using Optical Character Recognition (OCR), it can identify and pull out data such as Part Numbers (PN), Manufacturer Part Numbers (MPN), Customer Part Numbers (CPN), and Serial Numbers (SN).
+Welcome to the Hardware Component OCR Data Extractor application! This tool is designed to help you quickly extract key information from images of hardware components, such as Part Numbers (PN), Manufacturer Part Numbers (MPN), and Serial Numbers (SN).
 
-The application also features a local database to store mappings between MPNs and CPNs, which can be managed directly through the application's graphical user interface (GUI).
+The application features three main sections, organized into tabs:
+- **OCR Extraction:** The main tab for extracting data from images.
+- **Database Management:** A section to manage the mapping between Manufacturer Part Numbers (MPN) and your internal Customer Part Numbers (CPN).
+- **Model Training:** A powerful feature that allows you to label your own images to improve the accuracy of the OCR engine over time.
 
-## 2. Installation and Setup
+## 2. OCR Extraction Tab
 
-To run OcrScanPro, you need to have Python installed on your system, along with a few dependencies.
+This is where the core data extraction happens.
 
-### 2.1. Prerequisites
+### How to Extract Data:
 
-*   **Python 3:** Make sure you have Python 3 installed. You can download it from [python.org](https://python.org).
-*   **Tesseract OCR Engine:** This application uses the Tesseract engine for OCR. You must install it on your system.
-    *   **Windows:** Download and run the installer from the [Tesseract at UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) page. Make sure to note the installation path. The application will try to find it automatically, but if it fails, you may need to set the path manually in the `main.py` script.
-    *   **macOS:** You can install it using Homebrew: `brew install tesseract`
-    *   **Linux (Debian/Ubuntu):** You can install it using apt: `sudo apt-get update && sudo apt-get install -y tesseract-ocr`
+1.  **Choose your source:**
+    *   **Upload Picture & Extract:** Click this button to open a file dialog. Select an image file (`.png`, `.jpg`, etc.) from your computer.
+    *   **Camera Capture & Extract:** Click this button to open your computer's camera. A new window will appear with the live camera feed.
+        *   Point the camera at the hardware component.
+        *   Click the **Capture Image** button to take a picture.
+        *   The camera window will close, and the captured image will be processed.
 
-### 2.2. Install Python Dependencies
+2.  **Enable Deep Scan (Optional):**
+    *   Before starting the extraction, you can check the **Enable Deep Scan (Slower)** box.
+    *   This option tells the application to rotate the image in 90-degree increments and apply different preprocessing techniques. It is more thorough and can find text on poorly oriented images, but it takes significantly more time.
 
-Once the prerequisites are met, you can install the required Python libraries. Navigate to the project directory in your terminal and run the following command:
+3.  **View the Results:**
+    *   Once you select an image or capture a photo, the process will start automatically. You can monitor the progress via the status bar at the bottom.
+    *   The selected image will appear in the **Image Preview** box.
+    *   The extracted data will be displayed in the **Extraction Results** box.
+    *   All extracted data is also automatically saved to an Excel file named `extracted_data.xlsx` in the application's folder.
 
-```bash
-pip install -r requirements.txt
-```
+## 3. Database Management Tab
 
-This will install all necessary libraries, including `opencv`, `pytesseract`, `pandas`, and `openpyxl`.
+This tab allows you to manage a local database that maps Manufacturer Part Numbers (MPNs) to your company-specific Customer Part Numbers (CPNs). When the application extracts an MPN, it will automatically look up the corresponding CPN in this database and add it to the results.
 
-## 3. Running the Application
+### Features:
 
-To start the application, run the `main.py` script from your terminal:
+-   **Open Full Database Manager:**
+    *   Click this button to open a new window where you can view, add, edit, and delete individual MPN-CPN records.
+    *   **To Add:** Type the MPN and CPN in the fields and click "Add".
+    *   **To Update:** Select a record from the list, modify the MPN or CPN in the fields below, and click "Update".
+    *   **To Delete:** Select a record from the list and click "Delete".
 
-```bash
-python main.py
-```
+-   **Import from Excel:**
+    *   Click this to import a list of MPN-CPN mappings from an Excel file.
+    *   The Excel file **must** have two columns named `mpn` and `cpn`.
+    *   The import process will skip any MPNs that already exist in the database.
 
-This will launch the main application window.
+-   **Export to Excel:**
+    *   Click this to export all records from the database into a new Excel file. This is useful for backing up or sharing your MPN-CPN list.
 
-## 4. Core Features
+## 4. Model Training Tab
 
-### 4.1. Extracting Data from an Image
+This is the most advanced feature of the application. By providing images and labeling them with the correct data, you create a "ground truth" dataset. While this version of the application doesn't automatically retrain the OCR model, it saves your labeled data to the database. This data can be used in the future to fine-tune a custom OCR model for even better accuracy on your specific hardware components.
 
-You can extract data from an image in two ways:
+### How to Train:
 
-*   **Upload Picture:** Click the **"1. Upload Picture and Extract Data"** button. This will open a file dialog. Select an image file (`.png`, `.jpg`, etc.) from your computer. The application will immediately process the image and display the results.
-*   **Camera Capture:** Click the **"2. Camera Capture and Extract Data"** button. This will open your computer's webcam in a new window. Position the hardware component in front of the camera and click the "Capture Image" button. The captured image will then be processed.
+1.  **Start a New Session:**
+    *   Click the **Start New Training Session** button.
+    *   A file dialog will open. You can select one or multiple images to label.
 
-The extracted data will appear in the "Extraction Results" text box, and the results will also be automatically saved to a file named `extracted_data.xlsx` in the project directory.
+2.  **Label the Images:**
+    *   The training interface will appear.
+    *   The first image you selected will be shown in the **Image Preview**.
+    *   On the right, you will see entry fields for all the data points (PN, MPN, CPN, etc.).
+    *   Fill in the fields with the correct data as seen on the image. If a field is not present on the image, leave it blank.
 
-### 4.2. Using the "Deep Scan" Feature
+3.  **Navigate and Save:**
+    *   Use the **< Previous** and **Next >** buttons to navigate between the images you selected. Your labels for the current image are automatically saved when you navigate away.
+    *   The status label shows you which image you are currently viewing (e.g., "Image 1/10").
 
-For images that are difficult to read (e.g., blurry, poor lighting, unusual fonts), you can use the "Deep Scan" feature.
+4.  **Finish the Session:**
+    *   When you are done labeling all the images, click the **Finish & Save Session** button.
+    *   All the labels you provided will be saved to the `training_data` table in the application's database.
+    *   The original image files will be copied to the `training_data` directory for future reference.
 
-*   Before uploading or capturing an image, check the **"Enable Deep Scan (Slower)"** checkbox.
-*   With this option enabled, the application will try multiple rotations (0, 90, 180, 270 degrees) and apply different image enhancement techniques to improve the chances of a successful extraction.
-*   **Note:** As the name implies, this process is significantly slower than a standard scan.
-
-## 5. Database Management
-
-The application uses a local SQLite database (`cpn_database.db`) to store a mapping of Manufacturer Part Numbers (MPNs) to your internal Customer Part Numbers (CPNs). When an MPN is extracted from an image, the application will automatically look it up in this database and populate the CPN field with the result.
-
-To manage this database, click the **"3. Manage Database"** button on the main window. This will open the Database Management window.
-
-### 5.1. Viewing and Selecting Records
-
-The main part of the Database Management window is a table that displays all the MPN/CPN pairs currently in the database. You can click on any row in this table to select it, which will populate the "Manage Record" fields below for easy editing or deletion.
-
-### 5.2. Adding, Updating, and Deleting Records
-
-You can manage records using the buttons provided:
-
-*   **Add:** To add a new record, type the MPN and CPN into their respective entry fields and click the "Add" button.
-*   **Update:** To update an existing record, first click on the record in the table to select it. Then, modify the values in the entry fields and click the "Update" button.
-*   **Delete:** To delete a record, select it from the table and click the "Delete" button. You will be asked to confirm the deletion.
-*   **Clear Fields:** This button will clear the text from the MPN and CPN entry fields.
-
-### 5.3. Importing from Excel
-
-This feature allows you to bulk-add records to the database from an Excel file.
-
-1.  Click the **"Import from Excel"** button.
-2.  Select an Excel file (`.xlsx`) from your computer.
-3.  **Important:** The Excel file must contain two columns with the exact headers `mpn` and `cpn` (in lowercase).
-4.  The application will read the file and attempt to insert each row into the database.
-5.  If an MPN from the Excel file already exists in the database, that row will be **skipped** to prevent overwriting your data.
-6.  A summary message will appear, telling you how many records were successfully imported and how many were skipped.
-
-### 5.4. Exporting to Excel
-
-This feature allows you to back up or share your database.
-
-1.  Click the **"Export to Excel"** button.
-2.  A "Save As" dialog will appear. Choose a location and a name for your export file.
-3.  The application will save all records from the database into the specified Excel file.
-4.  A confirmation message will appear when the export is complete.
+Thank you for using the Hardware Component OCR Data Extractor!

@@ -100,84 +100,249 @@ class OCRApp:
         self.init_database()
         
     def setup_gui(self):
-        """Setup the main GUI interface"""
+        """Setup the main GUI interface with tabs."""
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+
         # Main frame
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky="nsew")
-        
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+
         # Title
-        title_label = ttk.Label(main_frame, text="Hardware Component OCR Data Extractor", 
+        title_label = ttk.Label(main_frame, text="Hardware Component OCR Data Extractor",
                                font=("Arial", 16, "bold"))
-        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
-        
-        # Three main buttons
-        btn_upload = ttk.Button(main_frame, text="1. Upload Picture\nand Extract Data",
-                               command=self.upload_image, width=20)
-        btn_upload.grid(row=1, column=0, padx=10, pady=10)
-        
-        btn_camera = ttk.Button(main_frame, text="2. Camera Capture\nand Extract Data",
-                               command=self.camera_capture, width=20)
-        btn_camera.grid(row=1, column=1, padx=10, pady=10)
-        
-        btn_db_manage = ttk.Button(main_frame, text="3. Manage Database",
-                                  command=self.open_db_management_window, width=20)
-        btn_db_manage.grid(row=1, column=2, padx=10, pady=10)
+        title_label.grid(row=0, column=0, pady=(0, 10), sticky="ew")
 
-        # Deep Scan checkbox
-        deep_scan_cb = ttk.Checkbutton(main_frame, text="Enable Deep Scan (Slower)",
-                                       variable=self.deep_scan_enabled)
-        deep_scan_cb.grid(row=2, column=0, columnspan=3, pady=(10,0), sticky="w")
+        # Notebook for tabs
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.grid(row=1, column=0, sticky="nsew")
 
-        # Image display frame
-        image_frame = ttk.LabelFrame(main_frame, text="Image Preview", padding="5")
-        image_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky="ew")
+        # Create tabs
+        self.tab_ocr = ttk.Frame(self.notebook, padding="10")
+        self.tab_db = ttk.Frame(self.notebook, padding="10")
+        self.tab_training = ttk.Frame(self.notebook, padding="10")
+
+        self.notebook.add(self.tab_ocr, text="OCR Extraction")
+        self.notebook.add(self.tab_db, text="Database Management")
+        self.notebook.add(self.tab_training, text="Model Training")
+
+        # --- Populate OCR Tab ---
+        self.setup_ocr_tab()
+
+        # --- Populate DB Tab ---
+        self.setup_db_tab()
+
+        # --- Populate Training Tab ---
+        self.setup_training_tab()
+
+        # Status bar
+        status_frame = ttk.Frame(main_frame)
+        status_frame.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        status_frame.columnconfigure(0, weight=1)
+
+        self.progress = ttk.Progressbar(status_frame, mode='indeterminate')
+        self.progress.grid(row=0, column=0, sticky="ew")
+        
+        self.status_label = ttk.Label(status_frame, text="Ready")
+        self.status_label.grid(row=1, column=0, sticky="ew")
+
+    def setup_ocr_tab(self):
+        """Setup the content of the OCR Extraction tab."""
+        self.tab_ocr.columnconfigure(1, weight=1)
+        self.tab_ocr.rowconfigure(1, weight=1)
+
+        # Top frame for buttons
+        controls_frame = ttk.Frame(self.tab_ocr)
+        controls_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0,10))
+
+        btn_upload = ttk.Button(controls_frame, text="Upload Picture & Extract", command=self.upload_image)
+        btn_upload.pack(side="left", padx=(0, 10))
+
+        btn_camera = ttk.Button(controls_frame, text="Camera Capture & Extract", command=self.camera_capture)
+        btn_camera.pack(side="left")
+
+        deep_scan_cb = ttk.Checkbutton(controls_frame, text="Enable Deep Scan (Slower)", variable=self.deep_scan_enabled)
+        deep_scan_cb.pack(side="left", padx=(20, 0))
+
+        # Image and Results frames
+        image_frame = ttk.LabelFrame(self.tab_ocr, text="Image Preview", padding="5")
+        image_frame.grid(row=1, column=0, pady=5, sticky="nsew")
         
         self.image_label = ttk.Label(image_frame, text="No image loaded")
-        self.image_label.grid(row=0, column=0)
-        
-        # Results frame
-        results_frame = ttk.LabelFrame(main_frame, text="Extraction Results", padding="5")
-        results_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky="nsew")
-        
-        self.results_text = scrolledtext.ScrolledText(results_frame, height=15, width=80)
-        self.results_text.grid(row=0, column=0, sticky="nsew")
-        
-        # Progress bar
-        self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
-        
-        # Status label
-        self.status_label = ttk.Label(main_frame, text="Ready")
-        self.status_label.grid(row=6, column=0, columnspan=3, pady=5)
-        
-        # Configure grid weights
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(4, weight=1)
+        self.image_label.pack()
+
+        results_frame = ttk.LabelFrame(self.tab_ocr, text="Extraction Results", padding="5")
+        results_frame.grid(row=1, column=1, pady=5, sticky="nsew")
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(0, weight=1)
 
+        self.results_text = scrolledtext.ScrolledText(results_frame, height=15, width=60)
+        self.results_text.grid(row=0, column=0, sticky="nsew")
+
+    def setup_db_tab(self):
+        """Setup the content of the Database Management tab."""
+        db_controls_frame = ttk.LabelFrame(self.tab_db, text="MPN-CPN Database", padding="10")
+        db_controls_frame.pack(fill="x", pady=5)
+
+        btn_db_manage = ttk.Button(db_controls_frame, text="Open Full Database Manager", command=self.open_db_management_window)
+        btn_db_manage.pack(pady=5)
+        
+        io_frame = ttk.Frame(db_controls_frame)
+        io_frame.pack(pady=10)
+
+        import_btn = ttk.Button(io_frame, text="Import from Excel", command=self.import_from_excel)
+        import_btn.pack(side="left", padx=5)
+
+        export_btn = ttk.Button(io_frame, text="Export to Excel", command=self.export_to_excel)
+        export_btn.pack(side="left", padx=5)
+
+    def setup_training_tab(self):
+        """Setup the content of the Model Training tab."""
+        self.tab_training.columnconfigure(1, weight=1)
+        self.tab_training.rowconfigure(1, weight=1)
+
+        # Top control frame
+        train_controls_frame = ttk.Frame(self.tab_training)
+        train_controls_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0,10))
+        btn_start_training = ttk.Button(train_controls_frame, text="Start New Training Session", command=self.train_model)
+        btn_start_training.pack(side="left")
+
+        # Main content frame, initially hidden
+        self.training_content_frame = ttk.Frame(self.tab_training)
+        self.training_content_frame.grid(row=1, column=0, columnspan=2, sticky='nsew')
+        self.training_content_frame.grid_remove() # Hide it initially
+
+        self.training_content_frame.columnconfigure(1, weight=1)
+        self.training_content_frame.rowconfigure(0, weight=1)
+
+        # Image display frame
+        img_frame = ttk.LabelFrame(self.training_content_frame, text="Image Preview", padding="5")
+        img_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        self.training_image_label = ttk.Label(img_frame, text="Select images to begin training.")
+        self.training_image_label.pack()
+        
+        # Labeling frame
+        label_frame = ttk.LabelFrame(self.training_content_frame, text="Data Labels", padding="10")
+        label_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+        
+        self.training_entries = {}
+        fields = ['PN', 'Part_Number', 'MPN', 'CPN', 'SSN', 'SN']
+        for i, field in enumerate(fields):
+            row = i // 2
+            col = (i % 2) * 2
+            ttk.Label(label_frame, text=f"{field}:").grid(row=row, column=col, sticky="w", padx=5, pady=2)
+            entry = ttk.Entry(label_frame, width=30)
+            entry.grid(row=row, column=col+1, padx=5, pady=2)
+            self.training_entries[field] = entry
+        
+        # Navigation frame
+        nav_frame = ttk.Frame(self.training_content_frame)
+        nav_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
+        
+        self.prev_btn = ttk.Button(nav_frame, text="< Previous", command=self.prev_training_image, state="disabled")
+        self.prev_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.next_btn = ttk.Button(nav_frame, text="Next >", command=self.next_training_image, state="disabled")
+        self.next_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.training_status = ttk.Label(nav_frame, text="")
+        self.training_status.pack(side=tk.LEFT, padx=20)
+
+        self.finish_btn = ttk.Button(nav_frame, text="Finish & Save Session", command=self.finish_training_session, state="disabled")
+        self.finish_btn.pack(side=tk.RIGHT, padx=5)
+
     def init_database(self):
-        """Initialize the SQLite database and create the table if it doesn't exist."""
-        if not os.path.exists(self.db_file):
-            try:
-                conn = sqlite3.connect(self.db_file)
-                cursor = conn.cursor()
-                cursor.execute('''
-                    CREATE TABLE mpn_cpn_map (
-                        mpn TEXT PRIMARY KEY,
-                        cpn TEXT NOT NULL
-                    )
-                ''')
-                conn.commit()
-                conn.close()
-                print(f"Database '{self.db_file}' created successfully.")
-            except Exception as e:
-                print(f"Error creating database: {str(e)}")
+        """Initialize the SQLite database and create tables if they don't exist."""
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            # Create mpn_cpn_map table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS mpn_cpn_map (
+                    mpn TEXT PRIMARY KEY,
+                    cpn TEXT NOT NULL
+                )
+            ''')
+            # Create training_data table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS training_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    image_path TEXT NOT NULL UNIQUE,
+                    pn TEXT,
+                    part_number TEXT,
+                    mpn TEXT,
+                    cpn TEXT,
+                    ssn TEXT,
+                    sn TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            print(f"Database '{self.db_file}' initialized successfully.")
+        except Exception as e:
+            print(f"Error initializing database: {str(e)}")
             
     def open_db_management_window(self):
         DBManagementWindow(self.root, self.db_file)
+
+    def export_to_excel(self):
+        """Export the database contents to an Excel file."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="Export Database to Excel"
+        )
+        if not file_path:
+            return
+        try:
+            conn = sqlite3.connect(self.db_file)
+            df = pd.read_sql_query("SELECT * FROM mpn_cpn_map", conn)
+            conn.close()
+            df.to_excel(file_path, index=False)
+            messagebox.showinfo("Export Successful", f"Database successfully exported to\n{file_path}", parent=self.root)
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export database: {e}", parent=self.root)
+
+    def import_from_excel(self):
+        """Import records from an Excel file into the database."""
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="Import from Excel"
+        )
+        if not file_path:
+            return
+        try:
+            df = pd.read_excel(file_path)
+            if 'mpn' not in df.columns or 'cpn' not in df.columns:
+                messagebox.showerror("Import Error", "Excel file must contain 'mpn' and 'cpn' columns.", parent=self.root)
+                return
+
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
+            imported_count = 0
+            skipped_count = 0
+            for index, row in df.iterrows():
+                mpn = str(row['mpn'])
+                cpn = str(row['cpn'])
+                try:
+                    # Use INSERT OR IGNORE to skip duplicates based on the PRIMARY KEY (mpn)
+                    cursor.execute("INSERT OR IGNORE INTO mpn_cpn_map (mpn, cpn) VALUES (?, ?)", (mpn, cpn))
+                    if cursor.rowcount > 0:
+                        imported_count += 1
+                    else:
+                        skipped_count += 1
+                except sqlite3.Error as insert_error:
+                    print(f"Skipping row due to DB error: {insert_error}")
+                    skipped_count += 1
+            conn.commit()
+            conn.close()
+            summary_message = f"Import Complete!\n\nSuccessfully imported: {imported_count} records.\nSkipped (already exist or error): {skipped_count} records."
+            messagebox.showinfo("Import Summary", summary_message, parent=self.root)
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to import from Excel file: {e}", parent=self.root)
 
     def upload_image(self):
         """Handle image upload and processing"""
@@ -275,174 +440,129 @@ class OCRApp:
         self.update_status("Camera stopped")
         
     def train_model(self):
-        """Handle training data upload with labeling"""
+        """Handle training data upload with labeling."""
         files = filedialog.askopenfilenames(
             title="Select Training Images",
             filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.tiff")]
         )
-        
-        if files:
-            self.open_training_window(files)
-            
-    def open_training_window(self, files):
-        """Open training window with labeling interface"""
-        training_window = tk.Toplevel(self.root)
-        training_window.title("Training Data Upload and Labeling")
-        training_window.geometry("800x600")
-        
-        # Current file index
-        self.current_training_index = 0
+        if not files:
+            return
+
         self.training_files = files
-        self.training_labels = []
+        self.current_training_index = 0
+        self.training_labels = [{} for _ in files] # Initialize labels list
+
+        # Show the training UI
+        self.training_content_frame.grid()
+        self.finish_btn.config(state="normal")
         
-        # Image display frame
-        img_frame = ttk.LabelFrame(training_window, text="Image Preview", padding="5")
-        img_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        self.training_image_label = ttk.Label(img_frame, text="Loading...")
-        self.training_image_label.pack()
-        
-        # Labeling frame
-        label_frame = ttk.LabelFrame(training_window, text="Data Labels", padding="10")
-        label_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # Create label entry fields
-        self.training_entries = {}
-        fields = ['PN', 'Part_Number', 'MPN', 'CPN', 'SSN', 'SN']
-        
-        for i, field in enumerate(fields):
-            row = i // 2
-            col = (i % 2) * 2
-            
-            ttk.Label(label_frame, text=f"{field}:").grid(row=row, column=col, sticky="w", padx=5, pady=2)
-            entry = ttk.Entry(label_frame, width=25)
-            entry.grid(row=row, column=col+1, padx=5, pady=2)
-            self.training_entries[field] = entry
-        
-        # Navigation frame
-        nav_frame = ttk.Frame(training_window)
-        nav_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        self.prev_btn = ttk.Button(nav_frame, text="< Previous", command=self.prev_training_image)
-        self.prev_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.next_btn = ttk.Button(nav_frame, text="Next >", command=self.next_training_image)
-        self.next_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.save_labels_btn = ttk.Button(nav_frame, text="Save Labels", command=self.save_current_labels)
-        self.save_labels_btn.pack(side=tk.LEFT, padx=20)
-        
-        self.finish_btn = ttk.Button(nav_frame, text="Finish Training", command=lambda: self.finish_training(training_window))
-        self.finish_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # Status label
-        self.training_status = ttk.Label(training_window, text="")
-        self.training_status.pack(pady=5)
-        
-        # Load first image
         self.load_training_image()
-        
+
     def load_training_image(self):
-        """Load current training image for labeling"""
-        if 0 <= self.current_training_index < len(self.training_files):
-            file_path = self.training_files[self.current_training_index]
+        """Load current training image for labeling."""
+        if not hasattr(self, 'training_files') or not (0 <= self.current_training_index < len(self.training_files)):
+            return
+
+        file_path = self.training_files[self.current_training_index]
+        try:
+            image = Image.open(file_path)
+            image.thumbnail((400, 300), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+            self.training_image_label.configure(image=photo, text="")
+            self.training_image_label.photo = photo
+        except Exception as e:
+            self.training_image_label.configure(image=None, text=f"Error loading image:\n{e}")
+
+        total = len(self.training_files)
+        current = self.current_training_index + 1
+        filename = os.path.basename(file_path)
+        self.training_status.configure(text=f"Image {current}/{total}: {filename}")
+
+        # Load existing labels for this image
+        labels = self.training_labels[self.current_training_index]
+        for field, entry in self.training_entries.items():
+            entry.delete(0, tk.END)
+            entry.insert(0, labels.get(field, ""))
             
-            # Display image
-            try:
-                image = Image.open(file_path)
-                image.thumbnail((400, 300), Image.Resampling.LANCZOS)
-                photo = ImageTk.PhotoImage(image)
-                self.training_image_label.configure(image=photo, text="")
-                self.training_image_label.photo = photo
-            except Exception as e:
-                self.training_image_label.configure(text=f"Error loading image: {str(e)}")
-            
-            # Update status
-            total = len(self.training_files)
-            current = self.current_training_index + 1
-            filename = os.path.basename(file_path)
-            self.training_status.configure(text=f"Image {current}/{total}: {filename}")
-            
-            # Load existing labels if available
-            if self.current_training_index < len(self.training_labels):
-                labels = self.training_labels[self.current_training_index]
-                for field, entry in self.training_entries.items():
-                    entry.delete(0, tk.END)
-                    entry.insert(0, labels.get(field, ""))
-            else:
-                # Clear entries for new image
-                for entry in self.training_entries.values():
-                    entry.delete(0, tk.END)
-                    
-            # Update button states
-            self.prev_btn.configure(state="normal" if self.current_training_index > 0 else "disabled")
-            self.next_btn.configure(state="normal" if self.current_training_index < len(self.training_files) - 1 else "disabled")
-            
+        # Update button states
+        self.prev_btn.configure(state="normal" if self.current_training_index > 0 else "disabled")
+        self.next_btn.configure(state="normal" if self.current_training_index < len(self.training_files) - 1 else "disabled")
+
     def prev_training_image(self):
         """Go to previous training image"""
         if self.current_training_index > 0:
             self.save_current_labels()
             self.current_training_index -= 1
             self.load_training_image()
-            
+
     def next_training_image(self):
         """Go to next training image"""
         if self.current_training_index < len(self.training_files) - 1:
             self.save_current_labels()
             self.current_training_index += 1
             self.load_training_image()
-            
+
     def save_current_labels(self):
-        """Save labels for current image"""
+        """Save labels for current image to the instance variable."""
+        if not hasattr(self, 'training_files'):
+            return
         labels = {}
         for field, entry in self.training_entries.items():
             labels[field] = entry.get().strip()
-            
-        # Extend labels list if needed
-        while len(self.training_labels) <= self.current_training_index:
-            self.training_labels.append({})
-            
         self.training_labels[self.current_training_index] = labels
+
+    def finish_training_session(self):
+        """Save all collected labels from the session to the database."""
+        self.save_current_labels() # Save the very last image's labels
         
-    def finish_training(self, window):
-        """Finish training and save all data"""
-        self.save_current_labels()
-        
-        # Save training data
-        training_data = []
         import shutil
+        saved_count, skipped_count = 0, 0
         
-        for i, file_path in enumerate(self.training_files):
-            filename = os.path.basename(file_path)
-            dest_path = os.path.join(self.training_data_dir, filename)
+        try:
+            conn = sqlite3.connect(self.db_file)
+            cursor = conn.cursor()
             
-            # Copy file
-            shutil.copy2(file_path, dest_path)
+            for i, file_path in enumerate(self.training_files):
+                labels = self.training_labels[i]
+                if not any(labels.values()):
+                    skipped_count += 1
+                    continue
+
+                filename = os.path.basename(file_path)
+                dest_path = os.path.join(self.training_data_dir, filename)
+
+                # Copy file to training dir, overwriting if exists
+                shutil.copy2(file_path, dest_path)
+                db_path = Path(dest_path).as_posix() # Use posix paths for db consistency
+
+                try:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO training_data
+                        (image_path, pn, part_number, mpn, cpn, ssn, sn, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (db_path, labels.get('PN',''), labels.get('Part_Number',''), labels.get('MPN',''), labels.get('CPN',''), labels.get('SSN',''), labels.get('SN','')))
+                    saved_count += 1
+                except sqlite3.Error as e:
+                    print(f"DB Error for {filename}: {e}")
+                    skipped_count += 1
+
+            conn.commit()
+            conn.close()
             
-            # Prepare training record
-            labels = self.training_labels[i] if i < len(self.training_labels) else {}
-            record = {
-                'filename': filename,
-                'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                **labels
-            }
-            training_data.append(record)
+            messagebox.showinfo("Training Session Saved", f"Saved {saved_count} labeled images to the database.\nSkipped {skipped_count} unlabeled images.")
             
-        # Save to CSV
-        training_csv = os.path.join(self.training_data_dir, "training_labels.csv")
-        df = pd.DataFrame(training_data)
+        except Exception as e:
+            messagebox.showerror("Training Save Error", f"Failed to save training session: {e}")
         
-        if os.path.exists(training_csv):
-            # Append to existing file
-            existing_df = pd.read_csv(training_csv)
-            df = pd.concat([existing_df, df], ignore_index=True)
-            
-        df.to_csv(training_csv, index=False)
-        
-        messagebox.showinfo("Training Complete", 
-                           f"Saved {len(self.training_files)} training images with labels to {self.training_data_dir}")
-        
-        window.destroy()
+        # Hide the training UI and reset state
+        self.training_content_frame.grid_remove()
+        self.training_image_label.configure(image=None, text="Select images to begin training.")
+        self.training_status.config(text="")
+        self.prev_btn.config(state="disabled")
+        self.next_btn.config(state="disabled")
+        self.finish_btn.config(state="disabled")
+        del self.training_files
+        del self.training_labels
                       
     def preprocess_image(self, image_path):
         """Preprocess image for better OCR results with rotation correction"""
@@ -1003,10 +1123,12 @@ class DBManagementWindow(tk.Toplevel):
                 mpn = str(row['mpn'])
                 cpn = str(row['cpn'])
                 try:
-                    cursor.execute("INSERT INTO mpn_cpn_map (mpn, cpn) VALUES (?, ?)", (mpn, cpn))
-                    imported_count += 1
-                except sqlite3.IntegrityError:
-                    # This MPN already exists, so we skip it
+                    cursor.execute("INSERT OR IGNORE INTO mpn_cpn_map (mpn, cpn) VALUES (?, ?)", (mpn, cpn))
+                    if cursor.rowcount > 0:
+                        imported_count += 1
+                    else:
+                        skipped_count += 1
+                except sqlite3.Error:
                     skipped_count += 1
 
             conn.commit()
